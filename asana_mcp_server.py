@@ -99,7 +99,8 @@ async def list_tools() -> List[Tool]:
             name="export_asana_tasks",
             description=(
                 "Export local tasks to Asana workspace. "
-                "Creates or updates tasks in target workspace."
+                "Creates or updates tasks in target workspace. "
+                "Can export specific tasks by ID or filter by sync_log."
             ),
             inputSchema={
                 "type": "object",
@@ -110,14 +111,20 @@ async def list_tools() -> List[Tool]:
                         "enum": ["target"],
                         "default": "target"
                     },
+                    "task_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific task IDs to export (if provided, ignores limit and sync_log_filter)",
+                        "default": None
+                    },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of tasks to export",
+                        "description": "Maximum number of tasks to export (ignored if task_ids provided)",
                         "default": 10
                     },
                     "sync_log_filter": {
                         "type": "string",
-                        "description": "Filter tasks by sync_log value (e.g., 'pending_export')",
+                        "description": "Filter tasks by sync_log value (e.g., 'pending_export') (ignored if task_ids provided)",
                         "default": None
                     }
                 },
@@ -128,14 +135,21 @@ async def list_tools() -> List[Tool]:
             name="sync_asana_tasks",
             description=(
                 "Bidirectional sync between Asana workspaces and local parquet. "
-                "Uses three-way merge for field-level reconciliation."
+                "Uses three-way merge for field-level reconciliation. "
+                "Can sync specific tasks by ID or all tasks based on sync_scope."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "task_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific task IDs to sync (if provided, syncs only these tasks)",
+                        "default": None
+                    },
                     "sync_scope": {
                         "type": "string",
-                        "description": "Scope of sync: both, source, or target",
+                        "description": "Scope of sync: both, source, or target (ignored if task_ids provided)",
                         "enum": ["both", "source", "target"],
                         "default": "both"
                     },
@@ -356,6 +370,7 @@ async def handle_export_tasks(arguments: Dict[str, Any]) -> List[TextContent]:
     parquet_client = get_parquet_client()
     
     workspace = arguments.get("workspace", "target")
+    task_ids = arguments.get("task_ids")
     limit = arguments.get("limit", 10)
     sync_log_filter = arguments.get("sync_log_filter")
     
@@ -366,6 +381,7 @@ async def handle_export_tasks(arguments: Dict[str, Any]) -> List[TextContent]:
     )
     
     stats = await exporter.export_tasks(
+        task_ids=task_ids,
         limit=limit,
         sync_log_filter=sync_log_filter
     )
@@ -378,6 +394,7 @@ async def handle_sync_tasks(arguments: Dict[str, Any]) -> List[TextContent]:
     config = get_config()
     parquet_client = get_parquet_client()
     
+    task_ids = arguments.get("task_ids")
     sync_scope = arguments.get("sync_scope", "both")
     dry_run = arguments.get("dry_run", False)
     
@@ -388,7 +405,7 @@ async def handle_sync_tasks(arguments: Dict[str, Any]) -> List[TextContent]:
         dry_run=dry_run
     )
     
-    stats = await syncer.sync()
+    stats = await syncer.sync(task_ids=task_ids)
     
     return format_result(stats)
 
@@ -626,6 +643,17 @@ async def register_webhooks_for_workspace(
 
 
 # Main entry point
+async def main():
+    """Run the MCP server."""
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(
+            read_stream,
+            write_stream,
+            app.create_initialization_options()
+        )
+
+
 if __name__ == "__main__":
-    stdio_server(app)
+    import asyncio
+    asyncio.run(main())
 

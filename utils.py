@@ -44,3 +44,10 @@ def format_result(result: Dict[str, Any]) -> List[TextContent]:
     """
     return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
+
+
+
+
+
+
+

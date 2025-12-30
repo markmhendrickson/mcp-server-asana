@@ -16,12 +16,29 @@ This MCP server consolidates functionality from the Asana integration scripts in
 - **Webhook Registration**: Register webhooks for real-time sync
 - **Utility Tools**: Get individual tasks, list projects, get workspace info
 - **Parquet MCP Integration**: All data operations go through parquet MCP server
+- **Comprehensive Test Coverage**: >90% coverage across all functionality
 
 ## Installation
 
 ```bash
 cd execution/mcp-servers/asana
 pip install -r requirements.txt
+```
+
+## Testing
+
+See [TESTING.md](TESTING.md) for comprehensive testing guide.
+
+**Quick Start:**
+```bash
+# Install test dependencies
+pip install -r requirements-test.txt
+
+# Run unit tests (fast, no external dependencies)
+pytest -m unit
+
+# Run all tests
+pytest
 ```
 
 ## Configuration
@@ -134,6 +151,7 @@ Import tasks from Asana workspace to local parquet via parquet MCP server.
 - `fetched`: Number of tasks fetched from Asana
 - `updated`: Number of existing tasks updated
 - `new`: Number of new tasks added
+- `tasks`: Detailed lists of updated and new tasks
 
 **Example Request:**
 ```json
@@ -151,7 +169,11 @@ Import tasks from Asana workspace to local parquet via parquet MCP server.
   "workspace": "source",
   "fetched": 45,
   "updated": 30,
-  "new": 15
+  "new": 15,
+  "tasks": {
+    "updated": [...],
+    "new": [...]
+  }
 }
 ```
 
@@ -161,6 +183,7 @@ Export local tasks to Asana workspace.
 
 **Parameters:**
 - `workspace` (optional): Workspace to export to ("target", default: "target")
+- `task_ids` (optional): Specific task IDs to export (if provided, ignores limit and sync_log_filter)
 - `limit` (optional): Maximum number of tasks to export (default: 10)
 - `sync_log_filter` (optional): Filter tasks by sync_log value (e.g., "pending_export")
 
@@ -171,13 +194,14 @@ Export local tasks to Asana workspace.
 - `created`: Number of tasks created in Asana
 - `updated`: Number of tasks updated in Asana
 - `failed`: Number of tasks that failed to export
+- `tasks`: Detailed lists of created, updated, and failed tasks
 
 **Example Request:**
 ```json
 {
   "workspace": "target",
-  "limit": 20,
-  "sync_log_filter": "pending_export"
+  "task_ids": ["task_1", "task_2"],
+  "limit": 20
 }
 ```
 
@@ -186,10 +210,15 @@ Export local tasks to Asana workspace.
 {
   "success": true,
   "workspace": "target",
-  "processed": 20,
-  "created": 12,
-  "updated": 7,
-  "failed": 1
+  "processed": 2,
+  "created": 1,
+  "updated": 1,
+  "failed": 0,
+  "tasks": {
+    "created": [...],
+    "updated": [...],
+    "failed": []
+  }
 }
 ```
 
@@ -198,6 +227,7 @@ Export local tasks to Asana workspace.
 Bidirectional sync between Asana workspaces and local parquet using three-way merge for field-level reconciliation.
 
 **Parameters:**
+- `task_ids` (optional): Specific task IDs to sync (if provided, syncs only these tasks)
 - `sync_scope` (optional): Scope of sync ("both", "source", or "target", default: "both")
 - `dry_run` (optional): Preview changes without applying them (default: false)
 
@@ -212,6 +242,7 @@ Bidirectional sync between Asana workspaces and local parquet using three-way me
 **Example Request:**
 ```json
 {
+  "task_ids": ["task_1", "task_2"],
   "sync_scope": "both",
   "dry_run": false
 }
@@ -223,19 +254,23 @@ Bidirectional sync between Asana workspaces and local parquet using three-way me
   "success": true,
   "source_to_local": {
     "updated": 5,
-    "new": 2
+    "new": 2,
+    "tasks": {...}
   },
   "target_to_local": {
     "updated": 3,
-    "new": 1
+    "new": 1,
+    "tasks": {...}
   },
   "local_to_source": {
     "updated": 2,
-    "created": 0
+    "created": 0,
+    "tasks": {...}
   },
   "local_to_target": {
     "updated": 4,
-    "created": 1
+    "created": 1,
+    "tasks": {...}
   },
   "sync_scope": "both"
 }
@@ -255,24 +290,6 @@ Import comments for specific tasks.
 - `task_count`: Number of tasks processed
 - `comments_imported`: Number of comments imported
 
-**Example Request:**
-```json
-{
-  "task_gids": ["1234567890", "0987654321"],
-  "workspace": "source"
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "workspace": "source",
-  "task_count": 2,
-  "comments_imported": 15
-}
-```
-
 ### `import_asana_task_metadata`
 
 Import task metadata: custom fields, dependencies, and stories.
@@ -290,27 +307,6 @@ Import task metadata: custom fields, dependencies, and stories.
 - `dependencies`: Number of dependencies imported
 - `stories`: Number of stories imported
 
-**Example Request:**
-```json
-{
-  "task_gids": ["1234567890", "0987654321"],
-  "workspace": "source",
-  "metadata_types": ["custom_fields", "dependencies"]
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "workspace": "source",
-  "task_count": 2,
-  "custom_fields": 5,
-  "dependencies": 3,
-  "stories": 0
-}
-```
-
 ### `register_asana_webhooks`
 
 Register Asana webhooks for projects in workspaces.
@@ -320,49 +316,7 @@ Register Asana webhooks for projects in workspaces.
 - `workspace` (optional): Workspace to register webhooks for ("source", "target", or "both", default: "both")
 
 **Returns:**
-- `source` (if applicable): Registration results for source workspace
-- `target` (if applicable): Registration results for target workspace
-- Each workspace result includes:
-  - `workspace`: Workspace name
-  - `registered_count`: Number of webhooks registered
-  - `failed_count`: Number of failed registrations
-  - `registered`: Array of registered webhooks
-  - `failed`: Array of failed registrations
-
-**Example Request:**
-```json
-{
-  "webhook_url": "https://example.com/webhooks/asana",
-  "workspace": "both"
-}
-```
-
-**Example Response:**
-```json
-{
-  "source": {
-    "workspace": "source",
-    "registered_count": 10,
-    "failed_count": 0,
-    "registered": [
-      {
-        "project_gid": "1234567890",
-        "project_name": "Project Name",
-        "webhook_gid": "9876543210",
-        "status": "registered"
-      }
-    ],
-    "failed": []
-  },
-  "target": {
-    "workspace": "target",
-    "registered_count": 5,
-    "failed_count": 0,
-    "registered": [],
-    "failed": []
-  }
-}
-```
+- Registration results for each workspace with counts and details
 
 ### `get_asana_task`
 
@@ -376,33 +330,6 @@ Get a single task from Asana by GID.
 - `success`: Boolean indicating success
 - `workspace`: Workspace fetched from
 - `task`: Task data object
-
-**Example Request:**
-```json
-{
-  "task_gid": "1234567890",
-  "workspace": "source"
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "workspace": "source",
-  "task": {
-    "gid": "1234567890",
-    "name": "Task Title",
-    "notes": "Task description",
-    "completed": false,
-    "due_on": "2026-01-15",
-    "assignee": {
-      "gid": "0987654321",
-      "name": "User Name"
-    }
-  }
-}
-```
 
 ### `list_asana_projects`
 
@@ -419,31 +346,6 @@ List projects in an Asana workspace.
 - `count`: Number of projects
 - `projects`: Array of project objects
 
-**Example Request:**
-```json
-{
-  "workspace": "source",
-  "archived": false
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "workspace": "source",
-  "workspace_gid": "1234567890",
-  "count": 15,
-  "projects": [
-    {
-      "gid": "1234567890",
-      "name": "Project Name",
-      "archived": false
-    }
-  ]
-}
-```
-
 ### `get_asana_workspace_info`
 
 Get information about an Asana workspace.
@@ -455,27 +357,6 @@ Get information about an Asana workspace.
 - `success`: Boolean indicating success
 - `workspace`: Workspace queried
 - `workspace_data`: Workspace information object
-
-**Example Request:**
-```json
-{
-  "workspace": "source"
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "workspace": "source",
-  "workspace_data": {
-    "gid": "1234567890",
-    "name": "My Workspace",
-    "email_domains": ["example.com"],
-    "is_organization": true
-  }
-}
-```
 
 ## Error Handling
 
@@ -532,6 +413,15 @@ The server returns structured error messages in JSON format when operations fail
    - The server checks for duplicates by title before creating
    - If duplicates exist, it updates the existing task instead
 
+6. **Tests Failing**
+   - See [TESTING.md](TESTING.md) for troubleshooting guide
+   - Ensure test dependencies installed
+   - Configure test workspaces for integration tests
+
+## Plan Limitations
+
+See [PLAN_LIMITATIONS.md](PLAN_LIMITATIONS.md) for detailed documentation of premium features and plan-specific limitations.
+
 ## Notes
 
 - The server uses the parquet MCP server for all data operations (never accesses parquet files directly)
@@ -578,4 +468,3 @@ MIT
 ## Support
 
 - [GitHub Issues](https://github.com/markmhendrickson/mcp-server-asana/issues)
-

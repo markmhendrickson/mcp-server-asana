@@ -109,9 +109,13 @@ class AsanaImporter:
         # Merge with existing tasks via parquet MCP
         updated_count = 0
         new_count = 0
+        updated_tasks = []
+        new_tasks = []
         
         for task in normalized_tasks:
             task_id = task['task_id']
+            task_title = task.get('title', 'Untitled Task')
+            asana_gid = task.get('asana_source_gid') if self.workspace == 'source' else task.get('asana_target_gid')
             
             # Check if task exists
             existing_tasks = await self.parquet_client.read_tasks(
@@ -126,17 +130,33 @@ class AsanaImporter:
                     updates=task
                 )
                 updated_count += 1
+                updated_tasks.append({
+                    "task_id": task_id,
+                    "title": task_title,
+                    "asana_gid": asana_gid,
+                    "action": "updated"
+                })
             else:
                 # Add new task
                 await self.parquet_client.add_task(task)
                 new_count += 1
+                new_tasks.append({
+                    "task_id": task_id,
+                    "title": task_title,
+                    "asana_gid": asana_gid,
+                    "action": "created"
+                })
         
         return {
             "success": True,
             "workspace": self.workspace,
             "fetched": len(tasks),
             "updated": updated_count,
-            "new": new_count
+            "new": new_count,
+            "tasks": {
+                "updated": updated_tasks,
+                "new": new_tasks
+            }
         }
     
     async def fetch_tasks_from_asana(

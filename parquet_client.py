@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -48,20 +49,62 @@ class ParquetMCPClient:
             "Set PARQUET_MCP_SERVER_PATH environment variable or ensure it's at the expected location."
         )
     
+    def _get_python_command(self) -> str:
+        """Get the Python command to use for running the parquet server."""
+        # Try to find venv Python relative to this file
+        server_dir = Path(__file__).parent
+        possible_venv_paths = [
+            server_dir.parent.parent.parent / "execution" / "venv" / "bin" / "python3",
+            server_dir.parent.parent / "execution" / "venv" / "bin" / "python3",
+        ]
+        
+        for venv_python in possible_venv_paths:
+            if venv_python.exists():
+                return str(venv_python)
+        
+        # Fall back to system python3
+        return "python3"
+    
     async def _call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool on the parquet MCP server."""
-        async with stdio_client(StdioServerParameters(
-            command="python3",
-            args=[self.parquet_server_path],
-            env=os.environ.copy()
-        )) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
-                # Parse the text content from the result
-                if result.content and len(result.content) > 0:
-                    return json.loads(result.content[0].text)
-                return {}
+        # Use venv Python if available, otherwise fall back to system python3
+        python_cmd = self._get_python_command()
+        
+        # Load .env file from repo root to get DATA_DIR and other env vars
+        env = os.environ.copy()
+        server_dir = Path(__file__).parent
+        possible_env_files = [
+            server_dir.parent.parent.parent / ".env",  # execution/mcp-servers/asana -> execution -> personal
+            server_dir.parent.parent / ".env",
+        ]
+        for env_file in possible_env_files:
+            if env_file.exists():
+                load_dotenv(env_file, override=False)  # Don't override existing env vars
+                # Update env dict with loaded values
+                for key, value in os.environ.items():
+                    if key not in env:
+                        env[key] = value
+                break
+        
+        try:
+            async with stdio_client(StdioServerParameters(
+                command=python_cmd,
+                args=[self.parquet_server_path],
+                env=env
+            )) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(tool_name, arguments)
+                    # Parse the text content from the result
+                    if result.content and len(result.content) > 0:
+                        return json.loads(result.content[0].text)
+                    return {}
+        except Exception as e:
+            # Re-raise with more context
+            raise RuntimeError(
+                f"Failed to call parquet MCP tool '{tool_name}': {e}. "
+                f"Python: {python_cmd}, Server: {self.parquet_server_path}"
+            ) from e
     
     async def read_tasks(self, filters: Optional[Dict] = None, columns: Optional[List[str]] = None, limit: Optional[int] = None) -> List[Dict]:
         """Read tasks from parquet via MCP."""
@@ -74,7 +117,8 @@ class ParquetMCPClient:
             args["limit"] = limit
         
         result = await self._call_tool("read_parquet", args)
-        return result.get("records", [])
+        # Parquet server returns "data" field, not "records"
+        return result.get("data", [])
     
     async def add_task(self, record: Dict) -> Dict:
         """Add a task to parquet via MCP."""
@@ -191,4 +235,5 @@ class ParquetMCPClient:
             "record": record
         })
         return result
+
 

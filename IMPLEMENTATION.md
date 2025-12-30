@@ -5,7 +5,7 @@
 
 ## Overview
 
-Converted Asana integration scripts to a standardized MCP server following the [MCP Server Development Guide](../../../shared/docs/mcp-server-development-guide.md). The server uses the parquet MCP server for all data operations, replacing direct parquet file access.
+Converted Asana integration scripts to a standardized MCP server following the [MCP Server Development Guide](../../../foundation/docs/mcp-server-development-guide.md). The server uses the parquet MCP server for all data operations, replacing direct parquet file access.
 
 ## Architecture
 
@@ -159,4 +159,11 @@ Test script: `test_server.py`
 - No hard dependencies on parent repository structure
 - All data operations go through parquet MCP server
 - Follows standardized patterns from MCP Server Development Guide
+
+
+
+
+
+
+
 

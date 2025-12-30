@@ -7,7 +7,7 @@ Bidirectional sync between Asana workspaces and local parquet.
 import sys
 from datetime import datetime, date
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -40,62 +40,74 @@ class AsanaTaskSyncer:
         # Cache for last synced state
         self._last_synced_state = {}
     
-    async def sync(self) -> Dict[str, Any]:
+    async def sync(self, task_ids: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Perform bidirectional sync.
+        
+        Args:
+            task_ids: Specific task IDs to sync (if provided, syncs only these tasks)
         
         Returns: Sync statistics
         """
         stats = {
-            'source_to_local': {'updated': 0, 'new': 0},
-            'target_to_local': {'updated': 0, 'new': 0},
-            'local_to_source': {'updated': 0, 'created': 0},
-            'local_to_target': {'updated': 0, 'created': 0},
+            'source_to_local': {'updated': 0, 'new': 0, 'tasks': {'updated': [], 'new': []}},
+            'target_to_local': {'updated': 0, 'new': 0, 'tasks': {'updated': [], 'new': []}},
+            'local_to_source': {'updated': 0, 'created': 0, 'tasks': {'updated': [], 'created': []}},
+            'local_to_target': {'updated': 0, 'created': 0, 'tasks': {'updated': [], 'created': []}},
             'sync_scope': self.sync_scope,
         }
         
         try:
-            do_source = self.sync_scope in ("both", "source")
-            do_target = self.sync_scope in ("both", "target")
+            # If task_ids provided, sync both workspaces for those tasks
+            if task_ids:
+                do_source = True
+                do_target = True
+            else:
+                do_source = self.sync_scope in ("both", "source")
+                do_target = self.sync_scope in ("both", "target")
             
             # Load last synced state
             await self.load_last_synced_state()
             
             # Sync source workspace ↔ local
             if do_source:
-                updated, new = await self.sync_workspace_to_local(
+                result = await self.sync_workspace_to_local(
                     self.source_client,
                     self.config.source_workspace_gid,
-                    'source'
+                    'source',
+                    task_ids=task_ids
                 )
-                stats['source_to_local'] = {'updated': updated, 'new': new}
+                stats['source_to_local'] = result
             
             # Sync target workspace ↔ local
             if do_target:
-                updated, new = await self.sync_workspace_to_local(
+                result = await self.sync_workspace_to_local(
                     self.target_client,
                     self.config.target_workspace_gid,
-                    'target'
+                    'target',
+                    task_ids=task_ids
                 )
-                stats['target_to_local'] = {'updated': updated, 'new': new}
+                stats['target_to_local'] = result
             
             # Sync local → source workspace
             if do_source:
-                updated, created = await self.sync_local_to_workspace(
+                result = await self.sync_local_to_workspace(
                     self.source_client,
                     self.config.source_workspace_gid,
-                    'source'
+                    'source',
+                    task_ids=task_ids
                 )
-                stats['local_to_source'] = {'updated': updated, 'created': created}
+                stats['local_to_source'] = result
             
             # Sync local → target workspace
             if do_target:
-                updated, created = await self.sync_local_to_workspace(
+                result = await self.sync_local_to_workspace(
                     self.target_client,
                     self.config.target_workspace_gid,
-                    'target'
+                    'target',
+                    task_ids=task_ids
                 )
-                stats['local_to_target'] = {'updated': updated, 'created': created}
+                stats['local_to_target'] = result
             
             # Save last synced state after successful sync
             if not self.dry_run:
@@ -114,21 +126,53 @@ class AsanaTaskSyncer:
         self,
         client: AsanaClientWrapper,
         workspace_gid: str,
-        workspace_name: str
-    ) -> Tuple[int, int]:
+        workspace_name: str,
+        task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """Sync tasks from Asana workspace to local parquet."""
-        # Fetch modified tasks from Asana
-        tasks = await self.fetch_tasks_modified_since(client, workspace_gid, workspace_name)
+        # If specific task_ids provided, fetch only those tasks
+        if task_ids:
+            # Get local tasks to find their Asana GIDs
+            local_tasks = await self.parquet_client.read_tasks(
+                filters={"task_id": {"$in": task_ids}},
+                limit=len(task_ids)
+            )
+            
+            # Extract Asana GIDs for this workspace
+            gid_field = 'asana_source_gid' if workspace_name == 'source' else 'asana_target_gid'
+            asana_gids = [t.get(gid_field) for t in local_tasks if t.get(gid_field)]
+            
+            if not asana_gids:
+                return 0, 0
+            
+            # Fetch specific tasks from Asana by GID
+            tasks = []
+            for gid in asana_gids:
+                try:
+                    opts = {
+                        "opt_fields": "gid,name,notes,html_notes,completed,completed_at,due_on,start_on,created_at,modified_at,assignee,assignee.gid,projects,projects.name,memberships,memberships.section.name,tags,tags.name"
+                    }
+                    task = client._with_retry(client.tasks.get_task, gid, opts)
+                    tasks.append(task)
+                except Exception as e:
+                    print(f"Warning: Could not fetch task {gid}: {e}", file=sys.stderr)
+        else:
+            # Fetch modified tasks from Asana
+            tasks = await self.fetch_tasks_modified_since(client, workspace_gid, workspace_name)
         
         if not tasks:
-            return 0, 0
+            return {'updated': 0, 'new': 0, 'tasks': {'updated': [], 'new': []}}
         
         updated_count = 0
         new_count = 0
+        updated_tasks = []
+        new_tasks = []
         
         for task_data in tasks:
             normalized = self.normalize_asana_task(task_data, workspace_name)
             task_id = normalized['task_id']
+            task_title = normalized.get('title', 'Untitled Task')
+            asana_gid = task_data.get('gid')
             
             # Check if task exists locally
             existing_tasks = await self.parquet_client.read_tasks(
@@ -154,35 +198,54 @@ class AsanaTaskSyncer:
                         updates=merged
                     )
                 updated_count += 1
+                updated_tasks.append({
+                    "task_id": task_id,
+                    "title": task_title,
+                    "asana_gid": asana_gid,
+                    "action": "updated"
+                })
             else:
                 # Add new task
                 if not self.dry_run:
                     await self.parquet_client.add_task(normalized)
                 new_count += 1
+                new_tasks.append({
+                    "task_id": task_id,
+                    "title": task_title,
+                    "asana_gid": asana_gid,
+                    "action": "created"
+                })
         
-        return updated_count, new_count
+        return {'updated': updated_count, 'new': new_count, 'tasks': {'updated': updated_tasks, 'new': new_tasks}}
     
     async def sync_local_to_workspace(
         self,
         client: AsanaClientWrapper,
         workspace_gid: str,
-        workspace_name: str
-    ) -> Tuple[int, int]:
+        workspace_name: str,
+        task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """Sync local tasks to Asana workspace."""
-        # Fetch all Asana-backed tasks
+        # Build filters
         filters = {}
         if workspace_name == 'source':
             filters["asana_source_gid"] = {"$ne": None}
         else:
             filters["asana_target_gid"] = {"$ne": None}
         
+        # If specific task_ids provided, filter by them
+        if task_ids:
+            filters["task_id"] = {"$in": task_ids}
+        
         local_tasks = await self.parquet_client.read_tasks(filters=filters)
         
         if not local_tasks:
-            return 0, 0
+            return {'updated': 0, 'created': 0, 'tasks': {'updated': [], 'created': []}}
         
         updated_count = 0
         created_count = 0
+        updated_tasks = []
+        created_tasks = []
         
         for task in local_tasks:
             task_id = task['task_id']
@@ -229,6 +292,12 @@ class AsanaTaskSyncer:
                             {}
                         )
                         updated_count += 1
+                        updated_tasks.append({
+                            "task_id": task_id,
+                            "title": task.get('title', 'Untitled Task'),
+                            "asana_gid": task_gid,
+                            "action": "updated"
+                        })
                 
                 except Exception as e:
                     print(f"Warning: Could not sync task {task_gid}: {e}", file=sys.stderr)
@@ -260,11 +329,17 @@ class AsanaTaskSyncer:
                                 filters={"task_id": task_id},
                                 updates={gid_field: new_gid}
                             )
+                            created_tasks.append({
+                                "task_id": task_id,
+                                "title": task.get('title', 'Untitled Task'),
+                                "asana_gid": new_gid,
+                                "action": "created"
+                            })
                     
                     except Exception as e:
                         print(f"Warning: Could not create task in {workspace_name}: {e}", file=sys.stderr)
         
-        return updated_count, created_count
+        return {'updated': updated_count, 'created': created_count, 'tasks': {'updated': updated_tasks, 'created': created_tasks}}
     
     async def fetch_tasks_modified_since(
         self,
