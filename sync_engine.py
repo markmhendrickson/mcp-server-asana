@@ -349,20 +349,45 @@ class AsanaTaskSyncer:
         since: Optional[datetime] = None
     ) -> List[Dict]:
         """Fetch tasks modified since timestamp."""
-        # For simplicity, fetch all incomplete tasks
-        # In production, this should use the sync_state to track last sync timestamp
+        # Asana API requires exactly one of: project, tag, section, user task list, or assignee + workspace
+        # We'll use assignee + workspace to get tasks assigned to the current user
+        
+        # Get current user GID
+        import requests
+        headers = {"Authorization": f"Bearer {client._pat}"}
+        me_url = "https://app.asana.com/api/1.0/users/me"
+        me_response = requests.get(me_url, headers=headers, params={"opt_fields": "gid"}, timeout=30)
+        
+        if me_response.status_code != 200:
+            print(f"Warning: Could not get current user for {workspace_name} workspace sync", file=sys.stderr)
+            return []
+        
+        user_gid = me_response.json().get("data", {}).get("gid")
+        if not user_gid:
+            print(f"Warning: Could not get user GID for {workspace_name} workspace sync", file=sys.stderr)
+            return []
+        
         opt_fields = [
             "gid", "name", "notes", "html_notes", "completed", "completed_at",
             "due_on", "start_on", "created_at", "modified_at",
             "assignee", "assignee.gid", "projects", "projects.name",
-            "memberships", "memberships.section.name", "tags", "tags.name"
+            "memberships", "memberships.section.name", "tags", "tags.name",
+            "custom_fields", "custom_fields.gid", "custom_fields.name", "custom_fields.type",
+            "custom_fields.enum_value", "custom_fields.enum_value.name"
         ]
         
         opts = {
+            "assignee": user_gid,
             "workspace": workspace_gid,
-            "completed_since": "now" if not since else since.isoformat(),
             "opt_fields": ",".join(opt_fields)
         }
+        
+        # Add completed_since filter if provided
+        if since:
+            opts["completed_since"] = since.isoformat()
+        else:
+            # Only fetch incomplete tasks if no timestamp provided
+            opts["completed_since"] = "now"
         
         tasks = list(client._with_retry(client.tasks.get_tasks, opts))
         return tasks
@@ -478,19 +503,61 @@ class AsanaTaskSyncer:
                 asana_modified = current_asana.get('updated_at')
                 
                 if asana_modified and local_updated:
-                    if asana_modified > local_updated:
+                    # Convert both to datetime for comparison
+                    if isinstance(local_updated, str):
+                        try:
+                            local_updated = datetime.fromisoformat(local_updated.replace('Z', '+00:00'))
+                        except (ValueError, AttributeError):
+                            local_updated = None
+                    if isinstance(asana_modified, str):
+                        try:
+                            asana_modified = datetime.fromisoformat(asana_modified.replace('Z', '+00:00'))
+                        except (ValueError, AttributeError):
+                            asana_modified = None
+                    
+                    if asana_modified and local_updated and asana_modified > local_updated:
                         merged[prop] = asana_val
-                else:
+                    elif local_updated:
+                        # Local is newer or asana_modified is None - keep local
+                        pass
+                    else:
+                        # Both None or local_updated is None - use asana
+                        merged[prop] = asana_val
+                elif asana_modified:
                     merged[prop] = asana_val
         
         # Update timestamp to newer value
         local_updated = current_local.get('updated_at')
         asana_modified = current_asana.get('updated_at')
         
-        if asana_modified and local_updated:
-            merged['updated_at'] = max(asana_modified, local_updated)
-        elif asana_modified:
-            merged['updated_at'] = asana_modified
+        # Convert both to datetime for comparison
+        local_dt = None
+        asana_dt = None
+        
+        if local_updated:
+            if isinstance(local_updated, str):
+                try:
+                    local_dt = datetime.fromisoformat(local_updated.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    pass
+            elif isinstance(local_updated, datetime):
+                local_dt = local_updated
+        
+        if asana_modified:
+            if isinstance(asana_modified, str):
+                try:
+                    asana_dt = datetime.fromisoformat(asana_modified.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    pass
+            elif isinstance(asana_modified, datetime):
+                asana_dt = asana_modified
+        
+        if asana_dt and local_dt:
+            merged['updated_at'] = max(asana_dt, local_dt)
+        elif asana_dt:
+            merged['updated_at'] = asana_dt
+        elif local_dt:
+            merged['updated_at'] = local_dt
         
         return merged
     

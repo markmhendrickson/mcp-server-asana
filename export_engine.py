@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import AsanaConfig
 from client import AsanaClientWrapper, TimeoutError
+from custom_field_manager import CustomFieldManager
 from parquet_client import ParquetMCPClient
 
 
@@ -45,6 +46,9 @@ class AsanaExporter:
         else:
             self.client = AsanaClientWrapper.from_config_target(config)
             self.workspace_gid = config.target_workspace_gid
+        
+        # Initialize custom field manager for syncing enumerated properties
+        self.custom_field_manager = CustomFieldManager(self.client, self.workspace_gid)
     
     async def export_tasks(
         self,
@@ -126,6 +130,14 @@ class AsanaExporter:
                     "due_on": str(task.get('due_date')) if task.get('due_date') else None,
                     "completed": task.get('status') == 'completed'
                 }
+                
+                # Add custom fields for enumerated properties (priority, urgency)
+                custom_fields_data = await self.custom_field_manager.prepare_custom_fields_for_task(
+                    priority=task.get('priority'),
+                    urgency=task.get('urgency')
+                )
+                if custom_fields_data:
+                    task_data["custom_fields"] = custom_fields_data
                 
                 # Remove None values
                 task_data = {k: v for k, v in task_data.items() if v is not None}

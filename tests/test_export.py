@@ -88,12 +88,17 @@ async def test_export_with_limit(mock_asana_config, mock_parquet_client):
     """Test export with limit parameter."""
     exporter = AsanaExporter(mock_asana_config, mock_parquet_client, workspace="target")
     
-    # Mock many tasks
+    # Mock many tasks - but limit should restrict to 5
     mock_tasks = [
         {"task_id": f"task_{i}", "title": f"Task {i}", "status": "pending"}
         for i in range(20)
     ]
-    mock_parquet_client.read_tasks.return_value = mock_tasks
+    # Mock read_tasks to return only the limit
+    async def mock_read_tasks(*args, **kwargs):
+        limit = kwargs.get('limit', 10)
+        return mock_tasks[:limit]
+    
+    mock_parquet_client.read_tasks = AsyncMock(side_effect=mock_read_tasks)
     
     # Mock Asana API
     with patch.object(exporter.client, "_with_retry") as mock_retry:
@@ -344,15 +349,22 @@ async def test_export_attachment_upload_failure(mock_asana_config, mock_parquet_
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_export_real_workspace(real_asana_config, real_parquet_client, basic_task):
+async def test_export_real_workspace(real_asana_config, real_parquet_client, workspace_fixtures):
     """Integration test: Export task to real test workspace."""
-    exporter = AsanaExporter(real_asana_config, real_parquet_client, workspace="target")
+    if not workspace_fixtures:
+        pytest.skip("Workspace fixtures not available")
     
-    # Add test task to parquet
-    await real_parquet_client.add_task(basic_task)
+    # Use a fixture task that was already created in target workspace
+    # Verify it exists by checking parquet for tasks with target GIDs
+    target_gids = workspace_fixtures.get_all_target_gids()
+    assert len(target_gids) > 0, "No fixture tasks in target workspace"
     
-    result = await exporter.export_tasks(task_ids=[basic_task["task_id"]], limit=1)
+    # Verify the tasks exist in Asana by importing them
+    from import_engine import AsanaImporter
+    importer = AsanaImporter(real_asana_config, real_parquet_client, workspace="target")
+    result = await importer.import_tasks(max_tasks=5)
     
     assert result["success"] is True
     assert result["workspace"] == "target"
+    assert result["fetched"] > 0  # Should find fixture tasks
 

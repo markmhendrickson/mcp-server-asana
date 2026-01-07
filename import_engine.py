@@ -17,7 +17,8 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import AsanaConfig
-from client import AsanaClientWrapper
+from client import AsanaClientWrapper, TimeoutError
+from custom_field_manager import CustomFieldManager
 from parquet_client import ParquetMCPClient
 
 
@@ -41,23 +42,8 @@ class AsanaImporter:
             self.client = AsanaClientWrapper.from_config_target(config)
             self.workspace_gid = config.target_workspace_gid
         
-        # Domain classification keywords
-        self.domain_keywords = {
-            'finance': ['tax', 'fbar', 'portfolio', 'investment', 'bank', 'crypto', 'money', 
-                       'payment', 'invoice', 'transfer', 'schwab', 'coinbase', 'kraken', 
-                       'ibercaja', 'capital one', 'wealth', 'estate', 'notary', 'liability',
-                       'insurance', 'audit', 'filing', 'cadastre', 'modelo', 'dividend'],
-            'admin': ['utility', 'bill', 'subscription', 'document', 'certificate', 'form',
-                     'registration', 'license', 'passport', 'visa', 'immigration', 'movistar',
-                     'aigües', 'electricity', 'water', 'gas', 'internet', 'phone'],
-            'health': ['workout', 'exercise', 'doctor', 'medical', 'health', 'fitness', 'gym',
-                      'yoga', 'diet', 'nutrition', 'sleep', 'checkup', 'appointment', 'vet',
-                      'therapy', 'mental', 'physical'],
-            'work': ['startup', 'neotoma', 'project', 'meeting', 'presentation', 'deadline',
-                    'contract', 'client', 'team', 'hire', 'product', 'launch', 'development'],
-            'social': ['family', 'friend', 'gift', 'party', 'wedding', 'birthday', 'visit',
-                      'call', 'dinner', 'lunch', 'trip', 'vacation', 'travel'],
-        }
+        # Initialize custom field manager for reading enumerated properties
+        self.custom_field_manager = CustomFieldManager(self.client, self.workspace_gid)
         
         # High-priority keywords
         self.high_priority_keywords = {
@@ -175,7 +161,9 @@ class AsanaImporter:
             "start_on", "created_at", "modified_at", "assignee", "assignee.gid", "assignee.name",
             "projects", "projects.name", "memberships", "memberships.section.name",
             "assignee_section", "assignee_section.name", "tags", "tags.name",
-            "permalink_url", "followers", "followers.gid", "followers.name"
+            "permalink_url", "followers", "followers.gid", "followers.name",
+            "custom_fields", "custom_fields.gid", "custom_fields.name", "custom_fields.type",
+            "custom_fields.enum_value", "custom_fields.enum_value.name"
         ]
         
         # Fetch from projects
@@ -351,10 +339,19 @@ class AsanaImporter:
         # Permalink URL
         permalink_url = task_data.get('permalink_url')
         
-        # Compute classifications
-        domain = self._classify_domain(title, notes)
-        urgency = self._compute_urgency(due_date, title, tags)
-        priority = self._compute_priority(title, notes, tags)
+        # Extract enumerated properties from custom fields (if available)
+        custom_fields = task_data.get('custom_fields', [])
+        properties_from_cf = self.custom_field_manager.extract_properties_from_custom_fields(custom_fields)
+        
+        # Use custom field values if available and not recalculating, otherwise compute
+        if recalculate or not any(properties_from_cf.values()):
+            # Recalculate or no custom fields found - compute from content
+            urgency = self._compute_urgency(due_date, title, tags)
+            priority = self._compute_priority(title, notes, tags)
+        else:
+            # Use values from custom fields, fallback to computed if missing
+            priority = properties_from_cf.get('priority') or self._compute_priority(title, notes, tags)
+            urgency = properties_from_cf.get('urgency') or self._compute_urgency(due_date, title, tags)
         
         # Determine status
         if completed:
@@ -367,7 +364,7 @@ class AsanaImporter:
             'title': title,
             'description': notes,
             'description_html': html_notes,
-            'domain': domain,
+            'domain': None,
             'status': status,
             'priority': priority,
             'urgency': urgency,
@@ -388,16 +385,6 @@ class AsanaImporter:
             'import_date': date.today(),
             'import_source_file': f'asana_{self.workspace}_api'
         }
-    
-    def _classify_domain(self, title: str, notes: str) -> str:
-        """Classify task domain based on keywords."""
-        text = f"{title} {notes}".lower()
-        
-        for domain, keywords in self.domain_keywords.items():
-            if any(keyword in text for keyword in keywords):
-                return domain
-        
-        return 'other'
     
     def _compute_urgency(self, due_date: Optional[date], title: str, tags: List[str]) -> str:
         """Compute task urgency based on due date and keywords."""

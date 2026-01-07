@@ -86,6 +86,11 @@ class ParquetMCPClient:
                         env[key] = value
                 break
         
+        # Support test data directories: if PARQUET_DATA_DIR is set, use it as DATA_DIR
+        # This allows tests to use a separate test data directory without affecting production data
+        if "PARQUET_DATA_DIR" in env and "DATA_DIR" not in env:
+            env["DATA_DIR"] = env["PARQUET_DATA_DIR"]
+        
         try:
             async with stdio_client(StdioServerParameters(
                 command=python_cmd,

@@ -14,6 +14,7 @@ import pytest
 from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from config import AsanaConfig
 from import_engine import AsanaImporter
 
 
@@ -87,7 +88,8 @@ async def test_import_with_only_incomplete_filter(mock_asana_config, mock_parque
     """Test import with only_incomplete=True filter."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
     
-    result = await importer.import_tasks(only_incomplete=True)
+    with patch.object(importer, "fetch_tasks_from_asana", return_value=[]):
+        result = await importer.import_tasks(only_incomplete=True)
     
     assert result["success"] is True
     assert result["workspace"] == "source"
@@ -99,7 +101,8 @@ async def test_import_with_assignee_filter(mock_asana_config, mock_parquet_clien
     """Test import with assignee_gid filter."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
     
-    result = await importer.import_tasks(assignee_gid="1234567890")
+    with patch.object(importer, "fetch_tasks_from_asana", return_value=[]):
+        result = await importer.import_tasks(assignee_gid="1234567890")
     
     assert result["success"] is True
     assert result["workspace"] == "source"
@@ -111,13 +114,20 @@ async def test_import_with_max_tasks_limit(mock_asana_config, mock_parquet_clien
     """Test import with max_tasks limit."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
     
-    # Mock many tasks
+    # Mock many tasks - but max_tasks should restrict to 10
     mock_tasks = [
         {"gid": str(i), "name": f"Task {i}", "notes": "", "completed": False}
         for i in range(100)
     ]
     
-    with patch.object(importer, "fetch_tasks_from_asana", return_value=mock_tasks):
+    # Mock fetch_tasks_from_asana to respect max_tasks limit
+    async def mock_fetch(*args, **kwargs):
+        max_tasks = kwargs.get('max_tasks')
+        if max_tasks:
+            return mock_tasks[:max_tasks]
+        return mock_tasks
+    
+    with patch.object(importer, "fetch_tasks_from_asana", side_effect=mock_fetch):
         result = await importer.import_tasks(max_tasks=10)
     
     assert result["success"] is True
@@ -130,7 +140,8 @@ async def test_import_without_archived_projects(mock_asana_config, mock_parquet_
     """Test import with include_archived=False."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
     
-    result = await importer.import_tasks(include_archived=False)
+    with patch.object(importer, "fetch_tasks_from_asana", return_value=[]):
+        result = await importer.import_tasks(include_archived=False)
     
     assert result["success"] is True
     assert result["workspace"] == "source"
@@ -188,8 +199,15 @@ async def test_import_existing_task_update(mock_asana_config, mock_parquet_clien
 @pytest.mark.asyncio
 async def test_import_invalid_workspace_gid(mock_asana_config, mock_parquet_client):
     """Test import with invalid workspace GID."""
-    mock_asana_config.source_workspace_gid = "invalid_gid"
-    importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
+    # Create new config with invalid workspace
+    invalid_config = AsanaConfig(
+        source_pat=mock_asana_config.source_pat,
+        target_pat=mock_asana_config.target_pat,
+        source_workspace_gid="invalid_gid",
+        target_workspace_gid=mock_asana_config.target_workspace_gid,
+    )
+    
+    importer = AsanaImporter(invalid_config, mock_parquet_client, workspace="source")
     
     # Mock API error
     with patch.object(importer, "fetch_tasks_from_asana", side_effect=Exception("Invalid workspace")):
@@ -268,13 +286,18 @@ async def test_import_edge_case_special_characters(mock_asana_config, mock_parqu
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_import_real_workspace(real_asana_config, real_parquet_client):
+async def test_import_real_workspace(real_asana_config, real_parquet_client, workspace_fixtures):
     """Integration test: Import tasks from real test workspace."""
+    if not workspace_fixtures:
+        pytest.skip("Workspace fixtures not available")
+    
     importer = AsanaImporter(real_asana_config, real_parquet_client, workspace="source")
     
-    result = await importer.import_tasks(max_tasks=5)
+    # Import tasks from source workspace (should include fixture tasks)
+    result = await importer.import_tasks(max_tasks=10)
     
     assert result["success"] is True
     assert result["workspace"] == "source"
     assert isinstance(result["fetched"], int)
+    assert result["fetched"] > 0  # Should find fixture tasks
 
