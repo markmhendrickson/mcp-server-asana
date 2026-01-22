@@ -18,12 +18,8 @@ repo_root = _current_file.parent.parent.parent.parent.parent.parent
 env_file = repo_root / ".env"
 if env_file.exists():
     load_dotenv(env_file, override=False)  # Don't override existing env vars
-else:
-    # Try absolute path as fallback
-    abs_repo_root = Path("/Users/markmhendrickson/Projects/personal")
-    abs_env_file = abs_repo_root / ".env"
-    if abs_env_file.exists():
-        load_dotenv(abs_env_file, override=False)
+# Note: If .env is not found in repo root, configure environment variables
+# directly or use ~/.config/asana-mcp/.env instead
 
 
 class TestWorkspaceConfig:

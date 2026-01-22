@@ -26,6 +26,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# Coverage files
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+
 
 
 
