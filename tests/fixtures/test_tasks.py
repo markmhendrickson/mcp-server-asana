@@ -32,8 +32,6 @@ def generate_basic_task(
         "completed_date": None,
         "updated_at": datetime.now(),
         "domain": "work",
-        "priority": "medium",
-        "urgency": "backlog",
         "project_names": None,
         "section_names": None,
         "tags": None,
@@ -61,8 +59,6 @@ def generate_full_property_task() -> Dict[str, Any]:
         start_date=date.today(),
         updated_at=datetime.now(),
         domain="finance",
-        priority="high",
-        urgency="this_week",
         project_names="Test Project|Another Project",
         section_names="Section 1|Section 2",
         tags="tag1|tag2|tag3",
@@ -143,30 +139,6 @@ def generate_status_variants() -> List[Dict[str, Any]]:
             completed_date=date.today() if status == "completed" else None,
         )
         for status in statuses
-    ]
-
-
-def generate_priority_variants() -> List[Dict[str, Any]]:
-    """Generate tasks with different priority values."""
-    priorities = ["critical", "high", "medium", "low"]
-    return [
-        generate_basic_task(
-            title=f"Task with priority: {priority}",
-            priority=priority,
-        )
-        for priority in priorities
-    ]
-
-
-def generate_urgency_variants() -> List[Dict[str, Any]]:
-    """Generate tasks with different urgency values."""
-    urgencies = ["today", "this_week", "soon", "backlog"]
-    return [
-        generate_basic_task(
-            title=f"Task with urgency: {urgency}",
-            urgency=urgency,
-        )
-        for urgency in urgencies
     ]
 
 
@@ -340,12 +312,6 @@ def generate_all_permutations() -> List[Dict[str, Any]]:
     
     # Status variants
     tasks.extend(generate_status_variants())
-    
-    # Priority variants
-    tasks.extend(generate_priority_variants())
-    
-    # Urgency variants
-    tasks.extend(generate_urgency_variants())
     
     # Domain variants
     tasks.extend(generate_domain_variants())

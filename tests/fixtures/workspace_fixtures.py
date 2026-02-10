@@ -237,34 +237,6 @@ class WorkspaceFixtures:
             status="completed"
         ))
         
-        # Priority variants
-        tasks.append(generate_basic_task(
-            title="[Fixture] Critical Priority",
-            priority="critical"
-        ))
-        tasks.append(generate_basic_task(
-            title="[Fixture] High Priority",
-            priority="high"
-        ))
-        tasks.append(generate_basic_task(
-            title="[Fixture] Low Priority",
-            priority="low"
-        ))
-        
-        # Urgency variants
-        tasks.append(generate_basic_task(
-            title="[Fixture] Today Urgency",
-            urgency="today"
-        ))
-        tasks.append(generate_basic_task(
-            title="[Fixture] This Week Urgency",
-            urgency="this_week"
-        ))
-        tasks.append(generate_basic_task(
-            title="[Fixture] Backlog Urgency",
-            urgency="backlog"
-        ))
-        
         # Date combinations
         from datetime import date, timedelta
         today = date.today()

@@ -92,17 +92,13 @@ class AsanaExporter:
                 "failed": 0
             }
         
-        # Sort by urgency and priority
-        urgency_order = {"today": 0, "this_week": 1, "soon": 2, "backlog": 3}
-        priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        # Sort by due date (soonest first)
+        def sort_key(t):
+            due = t.get('due_date')
+            due_str = str(due) if due else "9999-12-31"  # nulls last
+            return due_str
         
-        sorted_tasks = sorted(
-            tasks,
-            key=lambda t: (
-                urgency_order.get(t.get('urgency', 'backlog'), 99),
-                priority_order.get(t.get('priority', 'low'), 99)
-            )
-        )
+        sorted_tasks = sorted(tasks, key=sort_key)
         
         created_count = 0
         updated_count = 0
@@ -130,14 +126,6 @@ class AsanaExporter:
                     "due_on": str(task.get('due_date')) if task.get('due_date') else None,
                     "completed": task.get('status') == 'completed'
                 }
-                
-                # Add custom fields for enumerated properties (priority, urgency)
-                custom_fields_data = await self.custom_field_manager.prepare_custom_fields_for_task(
-                    priority=task.get('priority'),
-                    urgency=task.get('urgency')
-                )
-                if custom_fields_data:
-                    task_data["custom_fields"] = custom_fields_data
                 
                 # Remove None values
                 task_data = {k: v for k, v in task_data.items() if v is not None}

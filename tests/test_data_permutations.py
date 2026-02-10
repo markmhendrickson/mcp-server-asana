@@ -134,8 +134,6 @@ async def test_sync_preserves_all_properties(mock_asana_config, mock_parquet_cli
         "status": "in_progress",
         "due_date": date(2026, 1, 15),
         "start_date": date(2026, 1, 1),
-        "priority": "high",
-        "urgency": "this_week",
         "domain": "finance",
         "project_names": "Project 1|Project 2",
         "section_names": "Section 1|Section 2",
@@ -302,20 +300,6 @@ def test_property_combinations_coverage():
     assert "pending" in statuses
     assert "in_progress" in statuses
     assert "completed" in statuses
-    
-    # Check coverage of priority values
-    priorities = set(task["priority"] for task in permutations)
-    assert "critical" in priorities
-    assert "high" in priorities
-    assert "medium" in priorities
-    assert "low" in priorities
-    
-    # Check coverage of urgency values
-    urgencies = set(task["urgency"] for task in permutations)
-    assert "today" in urgencies
-    assert "this_week" in urgencies
-    assert "soon" in urgencies
-    assert "backlog" in urgencies
     
     # Verify all tasks have required fields (created_date was removed as it's not in schema)
     for task in permutations:

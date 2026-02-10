@@ -11,10 +11,10 @@ from typing import Dict, Optional
 from dotenv import load_dotenv
 
 # Load .env file from repo root if it exists
-# Path: execution/mcp-servers/asana/tests/fixtures/test_workspaces.py
-# To repo root: ../../../../../ (6 levels up)
+# Path: mcp/asana/tests/fixtures/test_workspaces.py
+# To repo root: ../../../../.. (5 levels up: fixtures -> tests -> asana -> mcp -> ateles)
 _current_file = Path(__file__).resolve()
-repo_root = _current_file.parent.parent.parent.parent.parent.parent
+repo_root = _current_file.parent.parent.parent.parent.parent
 env_file = repo_root / ".env"
 if env_file.exists():
     load_dotenv(env_file, override=False)  # Don't override existing env vars

@@ -223,9 +223,38 @@ async def test_sync_dry_run_mode(mock_asana_config, mock_parquet_client):
     # Dry run should not make actual changes
     result = await syncer.sync(task_ids=None)
     
+    assert result["dry_run"] is True
+    assert "pending" in result["source_to_local"]
+    assert "pending" in result["target_to_local"]
+    assert "pending" in result["local_to_source"]
+    assert "pending" in result["local_to_target"]
     assert "sync_scope" in result
     # Verify no updates were made to parquet or Asana (dry_run prevents saves)
     # Note: In dry_run mode, sync still runs but doesn't save state
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_sync_local_to_target_dry_run_pending_create(mock_asana_config, mock_parquet_client):
+    """Dry run should surface pending creates for local tasks without target GID."""
+    syncer = AsanaTaskSyncer(mock_asana_config, mock_parquet_client, dry_run=True)
+    
+    mock_parquet_client.read_tasks.return_value = [
+        {
+            "task_id": "task_local_only",
+            "title": "Local Only Task",
+            "asana_target_gid": None,
+        }
+    ]
+    
+    result = await syncer.sync_local_to_workspace(
+        syncer.target_client,
+        mock_asana_config.target_workspace_gid,
+        "target"
+    )
+    
+    assert result["pending"]["created"] == 1
+    assert result["pending"]["tasks"]["created"][0]["task_id"] == "task_local_only"
 
 
 @pytest.mark.unit

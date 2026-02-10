@@ -142,7 +142,7 @@ Import tasks from Asana workspace to local parquet via parquet MCP server.
 - `only_incomplete` (optional): Only fetch incomplete tasks (default: false)
 - `assignee_gid` (optional): Filter tasks by assignee GID
 - `max_tasks` (optional): Maximum number of tasks to import
-- `recalculate` (optional): Force recalculation of domain/priority/urgency (default: false)
+- `recalculate` (optional): Force recalculation of domain (default: false)
 - `include_archived` (optional): Include tasks from archived projects (default: true)
 
 **Returns:**
@@ -238,6 +238,8 @@ Bidirectional sync between Asana workspaces and local parquet using three-way me
 - `local_to_source`: Statistics for local → source sync
 - `local_to_target`: Statistics for local → target sync
 - `sync_scope`: Scope of sync performed
+- `dry_run`: Whether changes were applied
+- `pending` (when dry_run=true): Pending updates/creates for each direction
 
 **Example Request:**
 ```json

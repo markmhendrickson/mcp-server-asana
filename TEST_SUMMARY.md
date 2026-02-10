@@ -31,7 +31,7 @@ All testing requirements have been implemented and committed.
 - Create scenarios (new task, duplicate detection, assignee assignment)
 - Update scenarios (property updates)
 - Attachment upload
-- Priority/urgency sorting
+- Due date sorting
 - Error cases (invalid data, API failures, attachment failures)
 
 #### test_sync.py (14 tests)

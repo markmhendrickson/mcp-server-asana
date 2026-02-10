@@ -44,17 +44,6 @@ class AsanaImporter:
         
         # Initialize custom field manager for reading enumerated properties
         self.custom_field_manager = CustomFieldManager(self.client, self.workspace_gid)
-        
-        # High-priority keywords
-        self.high_priority_keywords = {
-            'critical': ['tax filing', 'fbar', 'audit', 'legal deadline', 'notary', 'cadastre',
-                        'modelo 900', 'lawsuit', 'eviction', 'emergency', 'urgent legal'],
-            'high': ['tax', 'insurance', 'license renewal', 'visa', 'passport', 'certificate',
-                    'bank transfer', 'portfolio rebalance', 'property', 'contract', 'compliance',
-                    'government', 'registration', 'filing deadline'],
-            'medium': ['payment', 'subscription', 'utility', 'repair', 'maintenance', 'appointment',
-                      'schedule', 'organize', 'research', 'purchase'],
-        }
     
     async def import_tasks(
         self,
@@ -339,20 +328,6 @@ class AsanaImporter:
         # Permalink URL
         permalink_url = task_data.get('permalink_url')
         
-        # Extract enumerated properties from custom fields (if available)
-        custom_fields = task_data.get('custom_fields', [])
-        properties_from_cf = self.custom_field_manager.extract_properties_from_custom_fields(custom_fields)
-        
-        # Use custom field values if available and not recalculating, otherwise compute
-        if recalculate or not any(properties_from_cf.values()):
-            # Recalculate or no custom fields found - compute from content
-            urgency = self._compute_urgency(due_date, title, tags)
-            priority = self._compute_priority(title, notes, tags)
-        else:
-            # Use values from custom fields, fallback to computed if missing
-            priority = properties_from_cf.get('priority') or self._compute_priority(title, notes, tags)
-            urgency = properties_from_cf.get('urgency') or self._compute_urgency(due_date, title, tags)
-        
         # Determine status
         if completed:
             status = 'completed'
@@ -366,8 +341,6 @@ class AsanaImporter:
             'description_html': html_notes,
             'domain': None,
             'status': status,
-            'priority': priority,
-            'urgency': urgency,
             'due_date': due_date,
             'start_date': start_date,
             'completed_date': completed_date,
@@ -385,47 +358,6 @@ class AsanaImporter:
             'import_date': date.today(),
             'import_source_file': f'asana_{self.workspace}_api'
         }
-    
-    def _compute_urgency(self, due_date: Optional[date], title: str, tags: List[str]) -> str:
-        """Compute task urgency based on due date and keywords."""
-        if not due_date:
-            return 'backlog'
-        
-        today = date.today()
-        days_until = (due_date - today).days
-        
-        if days_until < 0:
-            return 'overdue'
-        elif days_until == 0:
-            return 'today'
-        elif days_until <= 7:
-            return 'this_week'
-        elif days_until <= 30:
-            return 'soon'
-        else:
-            return 'backlog'
-    
-    def _compute_priority(self, title: str, notes: str, tags: List[str]) -> str:
-        """Compute task priority based on keywords."""
-        text = f"{title} {notes}".lower()
-        tag_text = " ".join(tags).lower()
-        
-        # Check for critical keywords
-        for keyword in self.high_priority_keywords['critical']:
-            if keyword in text or keyword in tag_text:
-                return 'critical'
-        
-        # Check for high keywords
-        for keyword in self.high_priority_keywords['high']:
-            if keyword in text or keyword in tag_text:
-                return 'high'
-        
-        # Check for medium keywords
-        for keyword in self.high_priority_keywords['medium']:
-            if keyword in text or keyword in tag_text:
-                return 'medium'
-        
-        return 'low'
     
     async def import_comments(self, task_gids: List[str]) -> Dict[str, Any]:
         """Import comments for specific tasks."""

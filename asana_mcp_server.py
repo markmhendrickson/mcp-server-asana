@@ -84,7 +84,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "recalculate": {
                         "type": "boolean",
-                        "description": "Force recalculation of domain/priority/urgency",
+                        "description": "Force recalculation of domain",
                         "default": False
                     },
                     "include_archived": {

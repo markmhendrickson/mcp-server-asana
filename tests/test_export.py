@@ -256,15 +256,15 @@ async def test_export_with_local_attachment(mock_asana_config, mock_parquet_clie
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_export_priority_sorting(mock_asana_config, mock_parquet_client):
-    """Test that tasks are exported in priority/urgency order."""
+async def test_export_due_date_sorting(mock_asana_config, mock_parquet_client):
+    """Test that tasks are exported in due date order."""
     exporter = AsanaExporter(mock_asana_config, mock_parquet_client, workspace="target")
     
-    # Mock tasks with different priorities
+    # Mock tasks - sort is by due_date (soonest first)
     mock_tasks = [
-        {"task_id": "task_low", "title": "Low", "status": "pending", "priority": "low", "urgency": "backlog"},
-        {"task_id": "task_critical", "title": "Critical", "status": "pending", "priority": "critical", "urgency": "today"},
-        {"task_id": "task_medium", "title": "Medium", "status": "pending", "priority": "medium", "urgency": "this_week"},
+        {"task_id": "task_first", "title": "First", "status": "pending", "due_date": "2025-01-01"},
+        {"task_id": "task_second", "title": "Second", "status": "pending", "due_date": "2025-01-02"},
+        {"task_id": "task_third", "title": "Third", "status": "pending", "due_date": "2025-01-03"},
     ]
     mock_parquet_client.read_tasks.return_value = mock_tasks
     
@@ -275,8 +275,8 @@ async def test_export_priority_sorting(mock_asana_config, mock_parquet_client):
         result = await exporter.export_tasks(limit=10)
     
     assert result["success"] is True
-    # Critical task should be processed first
-    assert result["tasks"]["created"][0]["task_id"] == "task_critical"
+    # Earliest due task should be processed first
+    assert result["tasks"]["created"][0]["task_id"] == "task_first"
 
 
 @pytest.mark.unit

@@ -1,7 +1,7 @@
 """
 Custom field manager for syncing local enumerated properties to Asana.
 
-Manages custom field GIDs for priority and urgency properties,
+Manages custom field GIDs for priority property,
 handling lookup, creation, and value mapping.
 """
 
@@ -16,7 +16,6 @@ class CustomFieldManager:
     
     # Standard custom field names
     PRIORITY_FIELD_NAME = "Priority"
-    URGENCY_FIELD_NAME = "Urgency"
     
     # Enum value mappings (local value -> Asana enum option name)
     PRIORITY_VALUES = {
@@ -24,14 +23,6 @@ class CustomFieldManager:
         "high": "High",
         "medium": "Medium",
         "low": "Low"
-    }
-    
-    URGENCY_VALUES = {
-        "today": "Today",
-        "this_week": "This Week",
-        "soon": "Soon",
-        "backlog": "Backlog",
-        "overdue": "Overdue"
     }
     
     def __init__(self, client: AsanaClientWrapper, workspace_gid: str):
@@ -132,7 +123,6 @@ class CustomFieldManager:
         field_gid = await self.get_or_create_custom_field(
             field_name,
             list(self.PRIORITY_VALUES.values()) if field_name == self.PRIORITY_FIELD_NAME
-            else list(self.URGENCY_VALUES.values()) if field_name == self.URGENCY_FIELD_NAME
             else []
         )
         
@@ -142,8 +132,6 @@ class CustomFieldManager:
         # Get the mapped option name (convert local value to Asana display name)
         if field_name == self.PRIORITY_FIELD_NAME:
             mapped_name = self.PRIORITY_VALUES.get(option_name, option_name.title())
-        elif field_name == self.URGENCY_FIELD_NAME:
-            mapped_name = self.URGENCY_VALUES.get(option_name, option_name.title())
         else:
             mapped_name = option_name.title()
         
@@ -156,22 +144,14 @@ class CustomFieldManager:
     ) -> Optional[str]:
         """Convert Asana enum option name back to local value."""
         if field_name == self.PRIORITY_FIELD_NAME:
-            # Reverse lookup
             for local_val, asana_name in self.PRIORITY_VALUES.items():
                 if asana_name == option_name:
                     return local_val
-        elif field_name == self.URGENCY_FIELD_NAME:
-            for local_val, asana_name in self.URGENCY_VALUES.items():
-                if asana_name == option_name:
-                    return local_val
-        
-        # Fallback: try lowercase match
         return option_name.lower() if option_name else None
     
     async def prepare_custom_fields_for_task(
         self,
-        priority: Optional[str] = None,
-        urgency: Optional[str] = None
+        priority: Optional[str] = None
     ) -> Dict[str, str]:
         """
         Prepare custom field data for task creation/update.
@@ -181,7 +161,6 @@ class CustomFieldManager:
         """
         custom_fields_data = {}
         
-        # Priority
         if priority:
             priority_field_gid = await self.get_or_create_custom_field(
                 self.PRIORITY_FIELD_NAME,
@@ -195,20 +174,6 @@ class CustomFieldManager:
                 if option_gid:
                     custom_fields_data[priority_field_gid] = option_gid
         
-        # Urgency
-        if urgency:
-            urgency_field_gid = await self.get_or_create_custom_field(
-                self.URGENCY_FIELD_NAME,
-                list(self.URGENCY_VALUES.values())
-            )
-            if urgency_field_gid:
-                option_gid = await self.get_enum_option_gid(
-                    self.URGENCY_FIELD_NAME,
-                    urgency
-                )
-                if option_gid:
-                    custom_fields_data[urgency_field_gid] = option_gid
-        
         return custom_fields_data
     
     def extract_properties_from_custom_fields(
@@ -216,14 +181,11 @@ class CustomFieldManager:
         custom_fields: List[Dict]
     ) -> Dict[str, Optional[str]]:
         """
-        Extract priority and urgency from task's custom fields.
+        Extract priority from task's custom fields.
         
-        Returns dict with 'priority' and 'urgency' keys.
+        Returns dict with 'priority' key.
         """
-        result = {
-            'priority': None,
-            'urgency': None
-        }
+        result = {'priority': None}
         
         for cf in custom_fields:
             cf_name = cf.get('name')
@@ -239,11 +201,6 @@ class CustomFieldManager:
             if cf_name == self.PRIORITY_FIELD_NAME:
                 result['priority'] = self.get_local_value_from_enum_option(
                     self.PRIORITY_FIELD_NAME,
-                    option_name
-                )
-            elif cf_name == self.URGENCY_FIELD_NAME:
-                result['urgency'] = self.get_local_value_from_enum_option(
-                    self.URGENCY_FIELD_NAME,
                     option_name
                 )
         

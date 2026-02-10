@@ -16,10 +16,12 @@ import pytest
 from dotenv import load_dotenv
 
 # Load .env file from repo root if it exists
-repo_root = Path(__file__).parent.parent.parent.parent.parent
+# Path: mcp/asana/tests/conftest.py
+# To repo root: ../../../../ (4 levels up: tests -> asana -> mcp -> ateles)
+repo_root = Path(__file__).parent.parent.parent.parent
 env_file = repo_root / ".env"
 if env_file.exists():
-    load_dotenv(env_file)
+    load_dotenv(env_file, override=False)  # Don't override existing env vars
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
