@@ -9,7 +9,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,6 +30,7 @@ from config import AsanaConfig
 from export_engine import AsanaExporter
 from import_engine import AsanaImporter
 from parquet_client import ParquetMCPClient
+
 from tests.fixtures.test_tasks import (
     generate_all_permutations,
     generate_basic_task,
@@ -58,35 +59,38 @@ def mock_asana_client_wrapper(request):
     # This must be checked BEFORE any imports that might trigger client initialization
     marker = None
     try:
-        marker = request.node.get_closest_marker('integration')
+        marker = request.node.get_closest_marker("integration")
     except (AttributeError, TypeError):
         pass
-    
+
     # Check function name pattern as fallback (integration tests have 'real_' in name)
-    test_name = getattr(request.node, 'name', '')
+    test_name = getattr(request.node, "name", "")
     is_integration = (
-        marker is not None or
-        'real_workspace' in test_name or
-        'real_' in test_name
+        marker is not None or "real_workspace" in test_name or "real_" in test_name
     )
-    
+
     if is_integration:
         # Don't mock for integration tests - they need real clients
         # Ensure asana module is properly imported and intact
         import asana
+
         # Force reload if corrupted
-        if not hasattr(asana, 'Configuration'):
+        if not hasattr(asana, "Configuration"):
             import importlib
+
             importlib.reload(asana)
-            if not hasattr(asana, 'Configuration'):
-                raise RuntimeError(f"asana module corrupted! Test: {test_name}, asana module: {asana}, dir: {[x for x in dir(asana) if 'Config' in x]}")
+            if not hasattr(asana, "Configuration"):
+                raise RuntimeError(
+                    f"asana module corrupted! Test: {test_name}, asana module: {asana}, dir: {[x for x in dir(asana) if 'Config' in x]}"
+                )
         yield None
         return
-    
-    with patch('import_engine.AsanaClientWrapper') as mock_import, \
-         patch('export_engine.AsanaClientWrapper') as mock_export, \
-         patch('sync_engine.AsanaClientWrapper') as mock_sync:
-        
+
+    with (
+        patch("import_engine.AsanaClientWrapper") as mock_import,
+        patch("export_engine.AsanaClientWrapper") as mock_export,
+        patch("sync_engine.AsanaClientWrapper") as mock_sync,
+    ):
         # Create mock client instances
         mock_client_instance = MagicMock()
         mock_import.from_config_source.return_value = mock_client_instance
@@ -95,12 +99,12 @@ def mock_asana_client_wrapper(request):
         mock_export.from_config_target.return_value = mock_client_instance
         mock_sync.from_config_source.return_value = mock_client_instance
         mock_sync.from_config_target.return_value = mock_client_instance
-        
+
         yield {
-            'import': mock_import,
-            'export': mock_export,
-            'sync': mock_sync,
-            'client': mock_client_instance
+            "import": mock_import,
+            "export": mock_export,
+            "sync": mock_sync,
+            "client": mock_client_instance,
         }
 
 
@@ -119,8 +123,10 @@ def mock_asana_config(test_workspace_config: TestWorkspaceConfig) -> AsanaConfig
     return AsanaConfig(
         source_pat=test_workspace_config.source_pat or "test_source_pat",
         target_pat=test_workspace_config.target_pat or "test_target_pat",
-        source_workspace_gid=test_workspace_config.source_workspace_gid or "test_source_gid",
-        target_workspace_gid=test_workspace_config.target_workspace_gid or "test_target_gid",
+        source_workspace_gid=test_workspace_config.source_workspace_gid
+        or "test_source_gid",
+        target_workspace_gid=test_workspace_config.target_workspace_gid
+        or "test_target_gid",
         fallback_assignee_email=None,
     )
 
@@ -130,11 +136,11 @@ def real_asana_config(test_workspace_config: TestWorkspaceConfig) -> AsanaConfig
     """Create real AsanaConfig for integration tests."""
     if not test_workspace_config.is_configured():
         pytest.skip("Test workspaces not configured")
-    
+
     # Set environment variables
     for key, value in test_workspace_config.to_env_dict().items():
         os.environ[key] = value
-    
+
     return AsanaConfig.from_env()
 
 
@@ -144,11 +150,11 @@ def session_real_asana_config() -> AsanaConfig:
     test_workspace_config = get_test_workspace_config()
     if not test_workspace_config.is_configured():
         pytest.skip("Test workspaces not configured")
-    
+
     # Set environment variables
     for key, value in test_workspace_config.to_env_dict().items():
         os.environ[key] = value
-    
+
     return AsanaConfig.from_env()
 
 
@@ -157,28 +163,28 @@ def session_real_asana_config() -> AsanaConfig:
 def mock_parquet_client() -> ParquetMCPClient:
     """Create mock ParquetMCPClient for unit tests."""
     client = AsyncMock(spec=ParquetMCPClient)
-    
+
     # Mock common methods
     client.read_tasks = AsyncMock(return_value=[])
     client.add_task = AsyncMock(return_value={"success": True})
     client.update_tasks = AsyncMock(return_value={"success": True, "updated": 0})
     client.upsert_task = AsyncMock(return_value={"success": True, "action": "created"})
-    
+
     client.read_comments = AsyncMock(return_value=[])
     client.upsert_comment = AsyncMock(return_value={"success": True})
-    
+
     client.read_custom_fields = AsyncMock(return_value=[])
     client.upsert_custom_field = AsyncMock(return_value={"success": True})
-    
+
     client.read_dependencies = AsyncMock(return_value=[])
     client.upsert_dependency = AsyncMock(return_value={"success": True})
-    
+
     client.read_stories = AsyncMock(return_value=[])
     client.upsert_story = AsyncMock(return_value={"success": True})
-    
+
     client.read_attachments = AsyncMock(return_value=[])
     client.upsert_attachment = AsyncMock(return_value={"success": True})
-    
+
     return client
 
 
@@ -191,7 +197,7 @@ def real_parquet_client() -> ParquetMCPClient:
         test_data_dir = Path(__file__).parent / "test_data"
         test_data_dir.mkdir(exist_ok=True)
         os.environ["PARQUET_DATA_DIR"] = str(test_data_dir)
-    
+
     return ParquetMCPClient()
 
 
@@ -204,25 +210,25 @@ def session_real_parquet_client() -> ParquetMCPClient:
         test_data_dir = Path(__file__).parent / "test_data"
         test_data_dir.mkdir(exist_ok=True)
         os.environ["PARQUET_DATA_DIR"] = str(test_data_dir)
-    
+
     return ParquetMCPClient()
 
 
 # Task data fixtures
 @pytest.fixture
-def basic_task() -> Dict[str, Any]:
+def basic_task() -> dict[str, Any]:
     """Generate a basic test task."""
     return generate_basic_task()
 
 
 @pytest.fixture
-def full_property_task() -> Dict[str, Any]:
+def full_property_task() -> dict[str, Any]:
     """Generate a task with all properties."""
     return generate_full_property_task()
 
 
 @pytest.fixture
-def all_task_permutations() -> List[Dict[str, Any]]:
+def all_task_permutations() -> list[dict[str, Any]]:
     """Generate all task permutations for comprehensive testing."""
     return generate_all_permutations()
 
@@ -232,7 +238,7 @@ def all_task_permutations() -> List[Dict[str, Any]]:
 async def workspace_fixtures(session_real_asana_config, session_real_parquet_client):
     """
     Populate source and target workspaces with test fixtures.
-    
+
     This fixture runs once per test session and creates test tasks
     in both workspaces covering various property permutations.
     """
@@ -241,33 +247,43 @@ async def workspace_fixtures(session_real_asana_config, session_real_parquet_cli
     if not test_workspace_config.is_configured():
         yield None
         return
-    
+
     # Create importers/exporters
-    source_importer = AsanaImporter(session_real_asana_config, session_real_parquet_client, workspace="source")
-    target_exporter = AsanaExporter(session_real_asana_config, session_real_parquet_client, workspace="target")
-    
+    source_importer = AsanaImporter(
+        session_real_asana_config, session_real_parquet_client, workspace="source"
+    )
+    target_exporter = AsanaExporter(
+        session_real_asana_config, session_real_parquet_client, workspace="target"
+    )
+
     # Create workspace fixtures manager
-    fixtures = WorkspaceFixtures(source_importer, target_exporter, session_real_parquet_client)
-    
+    fixtures = WorkspaceFixtures(
+        source_importer, target_exporter, session_real_parquet_client
+    )
+
     # Populate workspaces
     print("\n[Workspace Fixtures] Populating source workspace...")
     try:
         source_gids = await fixtures.populate_source_workspace()
-        print(f"[Workspace Fixtures] Created {len(source_gids)} tasks in source workspace")
+        print(
+            f"[Workspace Fixtures] Created {len(source_gids)} tasks in source workspace"
+        )
     except Exception as e:
         print(f"[Workspace Fixtures] Error populating source workspace: {e}")
         source_gids = []
-    
+
     print("[Workspace Fixtures] Populating target workspace...")
     try:
         target_gids = await fixtures.populate_target_workspace()
-        print(f"[Workspace Fixtures] Created {len(target_gids)} tasks in target workspace")
+        print(
+            f"[Workspace Fixtures] Created {len(target_gids)} tasks in target workspace"
+        )
     except Exception as e:
         print(f"[Workspace Fixtures] Error populating target workspace: {e}")
         target_gids = []
-    
+
     yield fixtures
-    
+
     # Cleanup (optional - can be implemented later)
     # await fixtures.cleanup()
 
@@ -278,7 +294,7 @@ async def cleanup_test_data(request):
     """Cleanup test data after each test."""
     # Setup: nothing to do before test
     yield
-    
+
     # Teardown: cleanup after test
     # This will be implemented based on specific test needs
     # For now, just ensure we're in a clean state
@@ -297,18 +313,14 @@ def event_loop():
 # Test markers
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: Unit tests (no external dependencies)"
-    )
+    config.addinivalue_line("markers", "unit: Unit tests (no external dependencies)")
     config.addinivalue_line(
         "markers", "integration: Integration tests (require test workspaces)"
     )
     config.addinivalue_line(
         "markers", "premium: Premium feature tests (may fail based on plan)"
     )
-    config.addinivalue_line(
-        "markers", "slow: Slow-running tests"
-    )
+    config.addinivalue_line("markers", "slow: Slow-running tests")
 
 
 # Collection hooks
@@ -319,4 +331,3 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
-

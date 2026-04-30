@@ -7,26 +7,23 @@ Tests cover:
 - Documenting actual failures (error responses, feature availability)
 """
 
-import pytest
 from unittest.mock import patch
 
+import pytest
 from import_engine import AsanaImporter
 
 
 @pytest.mark.premium
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_custom_field_creation_premium_only(mock_asana_config, mock_parquet_client):
+async def test_custom_field_creation_premium_only(
+    mock_asana_config, mock_parquet_client
+):
     """Test that custom field creation requires premium plan."""
-    importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+    AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
+
     # Mock 402 Payment Required error
-    error_response = {
-        "errors": [{
-            "message": "Custom fields are only available with premium"
-        }]
-    }
-    
+
     # This would require attempting custom field creation
     # which may not be in current implementation
     # Placeholder for future implementation
@@ -38,15 +35,10 @@ async def test_custom_field_creation_premium_only(mock_asana_config, mock_parque
 @pytest.mark.asyncio
 async def test_advanced_search_business_only(mock_asana_config, mock_parquet_client):
     """Test that advanced search requires business plan."""
-    importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+    AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
+
     # Mock 403 Forbidden error
-    error_response = {
-        "errors": [{
-            "message": "This feature requires a Business or Enterprise plan"
-        }]
-    }
-    
+
     # Advanced search testing placeholder
     assert True
 
@@ -74,21 +66,23 @@ async def test_timeline_features_business_only(mock_asana_config, mock_parquet_c
 @pytest.mark.premium
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_graceful_degradation_missing_custom_fields(mock_asana_config, mock_parquet_client):
+async def test_graceful_degradation_missing_custom_fields(
+    mock_asana_config, mock_parquet_client
+):
     """Test graceful handling when custom fields unavailable."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+
     # Mock task without custom fields
     mock_task = {
         "gid": "123",
         "name": "Task without custom fields",
         "notes": "Description",
-        "completed": False
+        "completed": False,
     }
-    
+
     with patch.object(importer, "fetch_tasks_from_asana", return_value=[mock_task]):
         result = await importer.import_tasks()
-    
+
     # Should succeed even without custom fields
     assert result["success"] is True
 
@@ -96,20 +90,23 @@ async def test_graceful_degradation_missing_custom_fields(mock_asana_config, moc
 @pytest.mark.premium
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_error_handling_402_payment_required(mock_asana_config, mock_parquet_client):
+async def test_error_handling_402_payment_required(
+    mock_asana_config, mock_parquet_client
+):
     """Test handling of 402 Payment Required error."""
-    importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+    AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
+
     # Mock 402 error
-    from requests.exceptions import HTTPError
     from unittest.mock import Mock
-    
+
+    from requests.exceptions import HTTPError
+
     response = Mock()
     response.status_code = 402
     response.text = '{"errors": [{"message": "Feature requires premium plan"}]}'
-    
+
     error = HTTPError(response=response)
-    
+
     # Test that error is handled gracefully
     try:
         raise error
@@ -122,18 +119,19 @@ async def test_error_handling_402_payment_required(mock_asana_config, mock_parqu
 @pytest.mark.asyncio
 async def test_error_handling_403_forbidden(mock_asana_config, mock_parquet_client):
     """Test handling of 403 Forbidden error for plan restrictions."""
-    importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+    AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
+
     # Mock 403 error
-    from requests.exceptions import HTTPError
     from unittest.mock import Mock
-    
+
+    from requests.exceptions import HTTPError
+
     response = Mock()
     response.status_code = 403
     response.text = '{"errors": [{"message": "This feature requires Business plan"}]}'
-    
+
     error = HTTPError(response=response)
-    
+
     # Test that error is handled gracefully
     try:
         raise error
@@ -144,18 +142,18 @@ async def test_error_handling_403_forbidden(mock_asana_config, mock_parquet_clie
 @pytest.mark.premium
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_no_crash_on_premium_feature_failure(mock_asana_config, mock_parquet_client):
+async def test_no_crash_on_premium_feature_failure(
+    mock_asana_config, mock_parquet_client
+):
     """Test that server doesn't crash when premium features fail."""
     importer = AsanaImporter(mock_asana_config, mock_parquet_client, workspace="source")
-    
+
     # Mock task import succeeds even if some features unavailable
-    mock_tasks = [
-        {"gid": "123", "name": "Test Task", "notes": "", "completed": False}
-    ]
-    
+    mock_tasks = [{"gid": "123", "name": "Test Task", "notes": "", "completed": False}]
+
     with patch.object(importer, "fetch_tasks_from_asana", return_value=mock_tasks):
         result = await importer.import_tasks()
-    
+
     # Should complete successfully
     assert result["success"] is True
     assert result["fetched"] > 0
@@ -165,13 +163,15 @@ async def test_no_crash_on_premium_feature_failure(mock_asana_config, mock_parqu
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_detect_plan_limitations_real_workspace(real_asana_config, real_parquet_client):
+async def test_detect_plan_limitations_real_workspace(
+    real_asana_config, real_parquet_client
+):
     """Integration test: Detect actual plan limitations in real workspace."""
     importer = AsanaImporter(real_asana_config, real_parquet_client, workspace="source")
-    
+
     # This test would attempt various features and document which fail
     # Results should be recorded in PLAN_LIMITATIONS.md
-    
+
     # For now, just test basic import works
     result = await importer.import_tasks(max_tasks=1)
     assert result["success"] is True
@@ -191,20 +191,14 @@ def test_rate_limit_handling():
 def test_feature_availability_documentation():
     """Test that PLAN_LIMITATIONS.md exists and is complete."""
     from pathlib import Path
-    
+
     limitations_file = Path(__file__).parent.parent / "PLAN_LIMITATIONS.md"
     assert limitations_file.exists(), "PLAN_LIMITATIONS.md must exist"
-    
+
     content = limitations_file.read_text()
-    
+
     # Verify key sections exist
     assert "Custom Fields" in content
     assert "Rate Limits" in content
     assert "Feature Availability Matrix" in content
     assert "Testing Methodology" in content
-
-
-
-
-
-

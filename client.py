@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 
 import asana
 
@@ -18,6 +18,7 @@ from config import AsanaConfig
 
 class TimeoutError(Exception):
     """Raised when an API call times out."""
+
     pass
 
 
@@ -29,7 +30,13 @@ class AsanaClientWrapper:
     and provides small helpers used elsewhere in the codebase.
     """
 
-    def __init__(self, pat: str, max_retries: int = 5, retry_backoff: float = 1.5, timeout: int = 60):
+    def __init__(
+        self,
+        pat: str,
+        max_retries: int = 5,
+        retry_backoff: float = 1.5,
+        timeout: int = 60,
+    ):
         self._pat = pat
         self._max_retries = max_retries
         self._retry_backoff = retry_backoff
@@ -71,25 +78,25 @@ class AsanaClientWrapper:
         """Execute a function with a timeout."""
         result = [None]
         exception = [None]
-        
+
         def target():
             try:
                 result[0] = func(*args, **kwargs)
             except Exception as e:
                 exception[0] = e
-        
+
         thread = threading.Thread(target=target)
         thread.daemon = True
         thread.start()
         thread.join(timeout=self._timeout)
-        
+
         if thread.is_alive():
             # Thread is still running, timeout occurred
             raise TimeoutError(f"API call timed out after {self._timeout} seconds")
-        
+
         if exception[0]:
             raise exception[0]
-        
+
         return result[0]
 
     def _with_retry(self, func, *args, **kwargs) -> Any:
@@ -104,11 +111,10 @@ class AsanaClientWrapper:
                     raise
                 time.sleep(delay)
                 delay *= self._retry_backoff
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 # For now, treat all exceptions as retryable up to max_retries.
                 if attempt >= self._max_retries - 1:
                     raise
                 time.sleep(delay)
                 delay *= self._retry_backoff
         raise RuntimeError("Unexpected fallthrough in _with_retry")
-

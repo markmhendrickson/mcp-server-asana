@@ -8,20 +8,19 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import patch
-
-from asana_mcp_server import handle_register_webhooks
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_register_webhooks_source_workspace(mock_asana_config, mock_parquet_client):
+async def test_register_webhooks_source_workspace(
+    mock_asana_config, mock_parquet_client
+):
     """Test registering webhooks for source workspace."""
     arguments = {
         "webhook_url": "https://example.com/webhooks/asana",
-        "workspace": "source"
+        "workspace": "source",
     }
-    
+
     # This would require more mocking to fully test
     # For now, basic structure test
     assert "workspace" in arguments
@@ -29,25 +28,29 @@ async def test_register_webhooks_source_workspace(mock_asana_config, mock_parque
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_register_webhooks_target_workspace(mock_asana_config, mock_parquet_client):
+async def test_register_webhooks_target_workspace(
+    mock_asana_config, mock_parquet_client
+):
     """Test registering webhooks for target workspace."""
     arguments = {
         "webhook_url": "https://example.com/webhooks/asana",
-        "workspace": "target"
+        "workspace": "target",
     }
-    
+
     assert "workspace" in arguments
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_register_webhooks_both_workspaces(mock_asana_config, mock_parquet_client):
+async def test_register_webhooks_both_workspaces(
+    mock_asana_config, mock_parquet_client
+):
     """Test registering webhooks for both workspaces."""
     arguments = {
         "webhook_url": "https://example.com/webhooks/asana",
-        "workspace": "both"
+        "workspace": "both",
     }
-    
+
     assert "workspace" in arguments
 
 
@@ -55,11 +58,8 @@ async def test_register_webhooks_both_workspaces(mock_asana_config, mock_parquet
 @pytest.mark.asyncio
 async def test_register_webhooks_invalid_url(mock_asana_config, mock_parquet_client):
     """Test webhook registration with invalid URL."""
-    arguments = {
-        "webhook_url": "not-a-valid-url",
-        "workspace": "source"
-    }
-    
+    arguments = {"webhook_url": "not-a-valid-url", "workspace": "source"}
+
     # Should fail validation
     assert "webhook_url" in arguments
 
@@ -71,9 +71,3 @@ async def test_register_webhooks_real_workspace(real_asana_config, real_parquet_
     """Integration test: Register webhooks in real test workspace."""
     # Note: This requires a valid HTTPS webhook URL
     pytest.skip("Requires valid webhook URL and real workspace")
-
-
-
-
-
-

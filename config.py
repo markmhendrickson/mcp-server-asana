@@ -11,7 +11,6 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -29,18 +28,20 @@ HAS_CREDENTIALS_MODULE = False
 try:
     # Try importing from common locations (for backward compatibility)
     import sys
+
     server_dir = Path(__file__).parent
     possible_paths = [
         server_dir.parent.parent.parent,  # execution/mcp-servers/asana -> execution -> personal
         server_dir.parent.parent,  # mcp-servers/asana -> mcp-servers -> execution
     ]
-    
+
     for parent_path in possible_paths:
         credentials_path = parent_path / "execution" / "scripts" / "credentials.py"
         if credentials_path.exists():
             sys.path.insert(0, str(parent_path))
             try:
                 from execution.scripts.credentials import get_credential
+
                 HAS_CREDENTIALS_MODULE = True
                 break
             except ImportError:
@@ -65,7 +66,7 @@ class AsanaConfig:
     target_pat: str
     source_workspace_gid: str
     target_workspace_gid: str
-    fallback_assignee_email: Optional[str] = None
+    fallback_assignee_email: str | None = None
     allow_overwrite: bool = False
 
     @classmethod
@@ -125,4 +126,3 @@ class AsanaConfig:
             fallback_assignee_email=fallback_assignee_email,
             allow_overwrite=allow_overwrite,
         )
-

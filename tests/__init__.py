@@ -11,9 +11,3 @@ Comprehensive tests for all Asana MCP functionality including:
 - Premium feature limitations
 - Data permutations
 """
-
-
-
-
-
-
